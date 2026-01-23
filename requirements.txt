@@ -1,0 +1,9 @@
+torch
+diffusers
+transformers
+accelerate
+peft
+streamlit
+pillow
+numpy
+huggingface_hub

@@ -1,0 +1,7 @@
+data/
+models/
+outputs/
+*.ckpt
+*.safetensors
+.env
+__pycache__/
