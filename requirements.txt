@@ -3,6 +3,7 @@ diffusers
 transformers
 accelerate
 peft
+datasets
 streamlit
 pillow
 numpy
