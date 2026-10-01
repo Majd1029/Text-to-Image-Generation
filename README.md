@@ -185,7 +185,7 @@ Call it with [`@gradio/client`](https://www.npmjs.com/package/@gradio/client)
    (Settings → Access Tokens).
 3. In this GitHub repo, go to Settings → Secrets and variables → Actions and add:
    - secret `HF_TOKEN` = the token
-   - variable `HF_SPACE` = `<hf-username>/text-to-image`
+   - variable `HF_SPACE` = `<hf-username>/text-to-image`, e.g. `MA29/text-to-image`
 4. Run the **Sync to Hugging Face Space** workflow (Actions tab), or push to
    `main`. It mirrors this repo to the Space, which installs the requirements
    and starts `space_app.py`. The first start downloads the model (~4 GB).
@@ -195,7 +195,7 @@ Call it with [`@gradio/client`](https://www.npmjs.com/package/@gradio/client)
 1. On vercel.com, **Add New → Project** and import this repository.
 2. Set **Root Directory** to `web`, Framework Preset **Other**, no build
    command. Deploy.
-3. If the Space isn't `Majd1029/text-to-image`, change `window.SPACE_ID` at the
+3. If the Space isn't `MA29/text-to-image`, change `window.SPACE_ID` at the
    top of `web/index.html`.
 
 ## Requirements

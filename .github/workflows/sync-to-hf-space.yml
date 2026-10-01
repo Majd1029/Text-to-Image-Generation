@@ -1,11 +1,11 @@
 # Mirrors this repository to the Hugging Face Space on every push to main.
 #
 # Setup (once):
-#   1. Create a Gradio Space (ZeroGPU hardware) on huggingface.co, e.g. Majd1029/text-to-image.
+#   1. Create a Gradio Space (ZeroGPU hardware) on huggingface.co, e.g. MA29/text-to-image.
 #   2. Create a Hugging Face access token with write permission.
 #   3. In this GitHub repo: Settings → Secrets and variables → Actions
 #        - Secret   HF_TOKEN  = the token
-#        - Variable HF_SPACE  = Majd1029/text-to-image   (owner/space-name)
+#        - Variable HF_SPACE  = MA29/text-to-image   (owner/space-name; the full Space URL also works)
 name: Sync to Hugging Face Space
 
 on:
@@ -32,5 +32,8 @@ jobs:
       - name: Push to the Space
         if: env.HF_TOKEN != '' && env.HF_SPACE != ''
         run: |
-          owner="${HF_SPACE%%/*}"
-          git push --force "https://${owner}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" HEAD:main
+          # Accept "owner/name" or the full https://huggingface.co/spaces/owner/name URL.
+          space="${HF_SPACE#https://huggingface.co/spaces/}"
+          space="${space%/}"
+          owner="${space%%/*}"
+          git push --force "https://${owner}:${HF_TOKEN}@huggingface.co/spaces/${space}" HEAD:main
