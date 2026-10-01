@@ -1,0 +1,36 @@
+# Mirrors this repository to the Hugging Face Space on every push to main.
+#
+# Setup (once):
+#   1. Create a Docker Space on huggingface.co, e.g. Majd1029/text-to-image.
+#   2. Create a Hugging Face access token with write permission.
+#   3. In this GitHub repo: Settings → Secrets and variables → Actions
+#        - Secret   HF_TOKEN  = the token
+#        - Variable HF_SPACE  = Majd1029/text-to-image   (owner/space-name)
+name: Sync to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE: ${{ vars.HF_SPACE }}
+    steps:
+      - name: Skip when not configured
+        if: env.HF_TOKEN == '' || env.HF_SPACE == ''
+        run: echo "HF_TOKEN secret or HF_SPACE variable not set; skipping sync."
+
+      - uses: actions/checkout@v4
+        if: env.HF_TOKEN != '' && env.HF_SPACE != ''
+        with:
+          fetch-depth: 0
+
+      - name: Push to the Space
+        if: env.HF_TOKEN != '' && env.HF_SPACE != ''
+        run: |
+          owner="${HF_SPACE%%/*}"
+          git push --force "https://${owner}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" HEAD:main

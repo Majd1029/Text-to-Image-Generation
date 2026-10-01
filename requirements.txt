@@ -8,3 +8,5 @@ streamlit
 pillow
 numpy
 huggingface_hub
+fastapi
+uvicorn

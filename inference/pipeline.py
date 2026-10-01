@@ -9,17 +9,41 @@ Two corrections to the original:
   training run that was meant to fill that directory failed, so the weights have
   never existed. Loading is now conditional and the caller can tell which model
   it actually got.
+
+Optional LCM-LoRA speed-up: `latent-consistency/lcm-lora-sdv1-5` lets SD1.5
+produce a usable image in 4-8 steps instead of 25-50, which is what makes a
+CPU-only deployment (e.g. a free Hugging Face Space) practical. It is on by
+default when no GPU is present; USE_LCM=1 / USE_LCM=0 forces it either way.
 """
 import os
 from pathlib import Path
 
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import LCMScheduler, StableDiffusionPipeline
 
 MODEL_ID = os.getenv("MODEL_ID", "stable-diffusion-v1-5/stable-diffusion-v1-5")
 
 # Local directory or a Hub repo id. Empty/missing means base model only.
 LORA_PATH = os.getenv("LORA_PATH", "models/lora_sd_v1_5")
+
+LCM_LORA_ID = os.getenv("LCM_LORA_ID", "latent-consistency/lcm-lora-sdv1-5")
+
+# (min, max, default) for each mode. LCM needs few steps and low guidance;
+# higher guidance burns the image out.
+SETTINGS = {
+    True: {"steps": (2, 8, 4), "guidance": (1.0, 2.0, 1.0)},
+    False: {"steps": (10, 50, 30), "guidance": (1.0, 15.0, 7.5)},
+}
+
+
+def lcm_enabled() -> bool:
+    """USE_LCM forces it on or off; unset means on for CPU, off for CUDA."""
+    value = os.getenv("USE_LCM", "").strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return not torch.cuda.is_available()
 
 
 def lora_available(path: str = LORA_PATH) -> bool:
@@ -34,9 +58,11 @@ def lora_available(path: str = LORA_PATH) -> bool:
     return any(p.glob("*.safetensors")) or any(p.glob("*.bin"))
 
 
-def load_pipeline(lora_path: str = LORA_PATH):
+def load_pipeline(lora_path: str = LORA_PATH, use_lcm: bool | None = None):
     """Returns (pipe, using_lora). Callers should surface `using_lora` rather
     than claiming a fine-tune they may not have."""
+    if use_lcm is None:
+        use_lcm = lcm_enabled()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pipe = StableDiffusionPipeline.from_pretrained(
         MODEL_ID,
@@ -46,10 +72,21 @@ def load_pipeline(lora_path: str = LORA_PATH):
     if device == "cuda":
         pipe.enable_attention_slicing()
 
+    adapters = []
+    if use_lcm:
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+        pipe.load_lora_weights(LCM_LORA_ID, adapter_name="lcm")
+        adapters.append("lcm")
+
     using_lora = False
     if lora_available(lora_path):
-        pipe.load_lora_weights(lora_path)
+        pipe.load_lora_weights(lora_path, adapter_name="style")
+        adapters.append("style")
         using_lora = True
+
+    if len(adapters) > 1:
+        # Both adapters stay active; loading a second one does not do this alone.
+        pipe.set_adapters(adapters, adapter_weights=[1.0] * len(adapters))
 
     pipe.set_progress_bar_config(disable=True)
     return pipe, using_lora

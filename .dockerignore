@@ -1,0 +1,10 @@
+.git
+.github
+web
+notebooks
+data
+models
+outputs
+*.ipynb
+__pycache__
+.env
