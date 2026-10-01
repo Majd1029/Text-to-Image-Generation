@@ -6,7 +6,14 @@ Stable Diffusion v1.5 and the page says so rather than claiming a fine-tune.
 """
 import streamlit as st
 
-from inference.pipeline import LORA_PATH, MODEL_ID, generate_image, load_pipeline
+from inference.pipeline import (
+    LORA_PATH,
+    MODEL_ID,
+    SETTINGS,
+    generate_image,
+    lcm_enabled,
+    load_pipeline,
+)
 from utils.image_utils import save_image
 from utils.prompt_utils import clean_prompt
 
@@ -36,14 +43,19 @@ prompt = st.text_input(
     "Prompt", placeholder="e.g. a lighthouse in a storm, dramatic sky"
 )
 
+use_lcm = lcm_enabled()
+limits = SETTINGS[use_lcm]
 col1, col2, col3 = st.columns(3)
-steps = col1.slider("Steps", 10, 50, 30)
-guidance = col2.slider("Guidance (CFG)", 1.0, 15.0, 7.5)
+steps = col1.slider("Steps", *limits["steps"])
+guidance = col2.slider("Guidance (CFG)", *limits["guidance"])
 seed = col3.number_input("Seed (-1 = random)", value=-1, step=1)
 
-st.caption(
-    "On CPU a 512px image takes several minutes. A CUDA GPU takes seconds."
-)
+if use_lcm:
+    st.caption("LCM-LoRA is on: 4-8 steps is enough. Set USE_LCM=0 to turn it off.")
+else:
+    st.caption(
+        "On CPU a 512px image takes several minutes. A CUDA GPU takes seconds."
+    )
 
 if st.button("Generate", type="primary"):
     cleaned = clean_prompt(prompt)

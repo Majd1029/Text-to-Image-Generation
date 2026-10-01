@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Text-to-Image Generator — Majd Aguir</title>
+  <meta name="description" content="Generate images from text with Stable Diffusion v1.5 and LCM-LoRA, running on a free CPU.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    // Address of the Hugging Face Space that runs server.py.
+    // A Space at huggingface.co/spaces/OWNER/NAME is served at https://owner-name.hf.space
+    window.API_URL = 'https://majd1029-text-to-image.hf.space';
+  </script>
+  <style>
+    :root {
+      --bg: #f5f5f7; --card: #ffffff; --card-2: #f2f2f4; --text: #1d1d1f; --muted: #6e6e73;
+      --border: rgba(0, 0, 0, 0.07); --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+      --accent: #8b3dff; --accent-2: #c026d3; --btn: #1d1d1f; --btn-text: #fff;
+      --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0b0c; --card: #161618; --card-2: #1f1f22; --text: #f5f5f7; --muted: #a1a1a6;
+        --border: rgba(255,255,255,.08); --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+        --btn: #f5f5f7; --btn-text: #111113; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 40px 24px 56px; }
+
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
+    h1 { font-size: clamp(28px, 4vw, 38px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+    h1 span { background: linear-gradient(120deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .sub { color: var(--muted); margin-top: 8px; font-size: 16px; max-width: 560px; }
+    .status { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); font-size: 14px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow); }
+    .status i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .status[data-state="ready"] i { background: var(--ok); }
+    .status[data-state="waking"] i, .status[data-state="loading"] i, .status[data-state="busy"] i { background: var(--warn); animation: pulse 1.2s infinite; }
+    .status[data-state="error"] i { background: var(--bad); }
+    @keyframes pulse { 50% { opacity: .35; } }
+
+    .grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 24px; align-items: start; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 28px; box-shadow: var(--shadow); padding: 28px; }
+    label, .label { display: block; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+    textarea { width: 100%; min-height: 120px; resize: vertical; font: 500 16px/1.5 'Inter', sans-serif; color: var(--text); background: var(--card-2); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; outline: none; }
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+    .count { font-size: 12px; color: var(--muted); text-align: right; margin-top: 6px; }
+    .examples { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 22px; }
+    .chip { font: 500 13px 'Inter', sans-serif; padding: 7px 12px; border-radius: 999px; background: var(--card-2); color: var(--text); border: 1px solid var(--border); cursor: pointer; }
+    .chip:hover { border-color: var(--accent); }
+
+    details { border-top: 1px solid var(--border); padding-top: 16px; margin-bottom: 22px; }
+    summary { cursor: pointer; font-weight: 600; font-size: 15px; list-style: none; display: flex; align-items: center; gap: 8px; }
+    summary::before { content: "›"; display: inline-block; transition: transform .2s; font-size: 18px; color: var(--muted); }
+    details[open] summary::before { transform: rotate(90deg); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 16px; }
+    .controls .full { grid-column: 1 / -1; }
+    .row { display: flex; justify-content: space-between; align-items: baseline; }
+    .row output { font-weight: 600; font-size: 14px; }
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    input[type=number] { width: 100%; font: 500 15px 'Inter', sans-serif; color: var(--text); background: var(--card-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+    .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 52px; padding: 0 26px; border-radius: 999px; border: 1px solid transparent; font: 600 16px 'Inter', sans-serif; cursor: pointer; transition: transform .15s, opacity .2s; text-decoration: none; }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { width: 100%; background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: 0 8px 22px rgba(139, 61, 255, .3); }
+    .btn-light { height: 42px; padding: 0 18px; font-size: 14px; background: var(--card-2); color: var(--text); border-color: var(--border); }
+
+    .result { min-height: 100%; display: flex; flex-direction: column; }
+    .canvas { position: relative; aspect-ratio: 1; width: 100%; border-radius: 20px; overflow: hidden; background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), radial-gradient(circle at 80% 90%, color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 55%), var(--card-2); display: grid; place-items: center; }
+    .canvas img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .placeholder { text-align: center; color: var(--muted); padding: 24px; }
+    .placeholder b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
+    .spinner { width: 44px; height: 44px; border-radius: 50%; border: 4px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: spin 1s linear infinite; margin: 0 auto 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; font-size: 14px; color: var(--muted); }
+    .meta .actions { display: flex; gap: 8px; }
+    .msg { margin-top: 14px; padding: 12px 14px; border-radius: 14px; font-size: 14px; display: none; }
+    .msg.show { display: block; }
+    .msg.error { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+    .msg.info { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--text); }
+
+    .note { margin-top: 24px; font-size: 14px; color: var(--muted); }
+    footer { margin-top: 36px; padding-top: 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+    footer a { text-decoration: none; font-weight: 500; }
+    footer a:hover { color: var(--text); }
+
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 480px) {
+      .wrap { padding: 24px 16px 40px; }
+      .card { padding: 20px; border-radius: 22px; }
+      .controls { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) { .spinner, .status i { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Text-to-<span>Image</span> Generator</h1>
+        <p class="sub">Describe a picture and Stable Diffusion draws it. Runs on a free CPU, so each image takes a little while.</p>
+      </div>
+      <div class="status" id="status" data-state="waking" role="status" aria-live="polite"><i></i><span>Connecting…</span></div>
+    </header>
+
+    <div class="grid">
+      <form class="card" id="form">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" maxlength="300" placeholder="e.g. a lighthouse on a cliff in a storm, dramatic sky, oil painting" required></textarea>
+        <div class="count"><span id="count">0</span>/300</div>
+
+        <div class="examples" aria-label="Example prompts">
+          <button type="button" class="chip">a cozy cabin in a snowy forest at dusk, warm light</button>
+          <button type="button" class="chip">an astronaut riding a horse, watercolor</button>
+          <button type="button" class="chip">a bowl of ramen, studio photo, shallow depth of field</button>
+          <button type="button" class="chip">a futuristic city skyline at night, neon, rain</button>
+        </div>
+
+        <details>
+          <summary>Advanced settings</summary>
+          <div class="controls">
+            <div>
+              <div class="row"><label for="steps">Steps</label><output id="stepsOut">4</output></div>
+              <input type="range" id="steps" min="2" max="8" value="4">
+            </div>
+            <div>
+              <div class="row"><label for="guidance">Guidance</label><output id="guidanceOut">1.0</output></div>
+              <input type="range" id="guidance" min="1" max="2" step="0.1" value="1">
+            </div>
+            <div class="full">
+              <label for="seed">Seed</label>
+              <input type="number" id="seed" value="-1" min="-1" max="4294967295" step="1">
+              <p class="hint">-1 picks a random seed. Reuse a seed with the same prompt to get the same image.</p>
+            </div>
+          </div>
+        </details>
+
+        <button class="btn btn-primary" id="go" type="submit" disabled>Generate</button>
+        <div class="msg" id="msg"></div>
+      </form>
+
+      <div class="card result">
+        <div class="canvas" id="canvas">
+          <div class="placeholder" id="placeholder"><b>Your image will appear here</b>Pick an example or write your own prompt.</div>
+        </div>
+        <div class="meta" id="meta" hidden>
+          <span id="metaText"></span>
+          <div class="actions">
+            <button type="button" class="btn btn-light" id="reuse">Use this seed</button>
+            <a class="btn btn-light" id="download" download="text-to-image.png">Download</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note" id="note">Model: Stable Diffusion v1.5 with LCM-LoRA for fast sampling. The project's own fine-tuned LoRA hasn't been trained yet, so these are base-model images.</p>
+
+    <footer>
+      <span>Built by <a href="https://majd1029.github.io/portfolio/">Majd Aguir</a></span>
+      <a href="https://github.com/Majd1029/Text-to-Image-Generation">View code on GitHub ↗</a>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var API = window.API_URL.replace(/\/$/, '');
+      var $ = function (id) { return document.getElementById(id); };
+      var statusEl = $('status'), go = $('go'), msg = $('msg'), prompt = $('prompt');
+      var ready = false, generating = false, lastSeed = null, lastUrl = null, pollTimer = null;
+
+      function setStatus(state, text) {
+        statusEl.dataset.state = state;
+        statusEl.querySelector('span').textContent = text;
+      }
+      function showMsg(kind, text) {
+        msg.className = 'msg show ' + kind;
+        msg.textContent = text;
+      }
+      function clearMsg() { msg.className = 'msg'; msg.textContent = ''; }
+      function updateButton() { go.disabled = !ready || generating || !prompt.value.trim(); }
+
+      function applySettings(s) {
+        if (!s) return;
+        var st = $('steps'), gd = $('guidance');
+        st.min = s.steps[0]; st.max = s.steps[1]; st.value = s.steps[2];
+        gd.min = s.guidance[0]; gd.max = s.guidance[1]; gd.value = s.guidance[2];
+        gd.step = s.guidance[1] - s.guidance[0] > 3 ? 0.5 : 0.1;
+        $('stepsOut').textContent = st.value;
+        $('guidanceOut').textContent = Number(gd.value).toFixed(1);
+      }
+
+      var settingsApplied = false, firstCheck = Date.now();
+      function poll() {
+        clearTimeout(pollTimer);
+        fetch(API + '/health', { cache: 'no-store' })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(function (h) {
+            if (h.status === 'ready') {
+              ready = true;
+              setStatus(generating ? 'busy' : 'ready', generating ? 'Generating…' : 'Ready');
+              if (!settingsApplied) { applySettings(h.settings); settingsApplied = true; }
+              if (h.model) $('note').textContent = 'Model: ' + h.model + (h.fine_tuned ? '.' : '. The project\'s own fine-tuned LoRA hasn\'t been trained yet, so these are base-model images.');
+              pollTimer = setTimeout(poll, 30000);
+            } else if (h.status === 'loading') {
+              ready = false;
+              setStatus('loading', 'Loading model…');
+              pollTimer = setTimeout(poll, 4000);
+            } else {
+              ready = false;
+              setStatus('error', 'Server error');
+              showMsg('error', 'The model failed to load on the server. Please try again later.');
+              pollTimer = setTimeout(poll, 30000);
+            }
+            updateButton();
+          })
+          .catch(function () {
+            // A sleeping Space answers without CORS headers (or not at all) while it starts.
+            ready = false;
+            var waited = (Date.now() - firstCheck) / 1000;
+            if (waited < 600) {
+              setStatus('waking', 'Waking up the server…');
+              if (waited > 8) showMsg('info', 'The server sleeps when nobody has used it for a while. Waking it up usually takes 1–3 minutes; this page will update by itself.');
+              pollTimer = setTimeout(poll, 5000);
+            } else {
+              setStatus('error', 'Offline');
+              showMsg('error', 'The server is not responding. Please try again later.');
+              pollTimer = setTimeout(poll, 30000);
+            }
+            updateButton();
+          });
+      }
+
+      function placeholder(html) {
+        $('canvas').innerHTML = '<div class="placeholder">' + html + '</div>';
+      }
+
+      $('form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var text = prompt.value.trim();
+        if (!text || !ready || generating) return;
+        generating = true; updateButton(); clearMsg();
+        setStatus('busy', 'Generating…');
+        $('meta').hidden = true;
+        var started = Date.now();
+        placeholder('<div class="spinner"></div><b id="elapsed">0s</b>Generating on a free CPU. This can take up to a minute.');
+        var tick = setInterval(function () {
+          var el = $('elapsed'); if (el) el.textContent = Math.round((Date.now() - started) / 1000) + 's';
+        }, 500);
+        var controller = new AbortController();
+        var timeout = setTimeout(function () { controller.abort(); }, 5 * 60 * 1000);
+
+        fetch(API + '/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: text,
+            steps: Number($('steps').value),
+            guidance: Number($('guidance').value),
+            seed: Number($('seed').value)
+          }),
+          signal: controller.signal
+        })
+          .then(function (r) {
+            if (r.ok) return r.blob().then(function (b) { return { blob: b, headers: r.headers }; });
+            return r.json().catch(function () { return {}; }).then(function (body) {
+              var detail = typeof body.detail === 'string' ? body.detail : '';
+              if (r.status === 429) throw new Error(detail || 'The demo is busy. Try again in a minute.');
+              if (r.status === 503) { ready = false; poll(); throw new Error(detail || 'The model is still loading.'); }
+              if (r.status === 422) throw new Error(detail || 'Check the prompt and settings.');
+              throw new Error(detail || 'Something went wrong (HTTP ' + r.status + ').');
+            });
+          })
+          .then(function (res) {
+            if (lastUrl) URL.revokeObjectURL(lastUrl);
+            lastUrl = URL.createObjectURL(res.blob);
+            lastSeed = res.headers.get('X-Seed');
+            var secs = ((Date.now() - started) / 1000).toFixed(0);
+            $('canvas').innerHTML = '';
+            var img = new Image(); img.src = lastUrl; img.alt = text;
+            $('canvas').appendChild(img);
+            $('download').href = lastUrl;
+            $('metaText').textContent = 'Seed ' + lastSeed + ' · ' + res.headers.get('X-Steps') + ' steps · ' + secs + 's';
+            $('meta').hidden = false;
+          })
+          .catch(function (err) {
+            placeholder('<b>No image this time</b>Adjust the prompt or try again.');
+            // fetch() rejects with a TypeError on network failure; its message differs by browser.
+            var offline = err instanceof TypeError;
+            showMsg('error', err.name === 'AbortError' ? 'This took too long and was cancelled. Try again in a moment.' : (offline ? 'Could not reach the server. It may be waking up; try again shortly.' : err.message));
+            if (offline) { ready = false; poll(); }
+          })
+          .finally(function () {
+            clearInterval(tick); clearTimeout(timeout);
+            generating = false;
+            if (ready) setStatus('ready', 'Ready');
+            updateButton();
+          });
+      });
+
+      prompt.addEventListener('input', function () { $('count').textContent = prompt.value.length; updateButton(); });
+      document.querySelectorAll('.chip').forEach(function (c) {
+        c.addEventListener('click', function () { prompt.value = c.textContent; prompt.dispatchEvent(new Event('input')); prompt.focus(); });
+      });
+      $('steps').addEventListener('input', function (e) { $('stepsOut').textContent = e.target.value; });
+      $('guidance').addEventListener('input', function (e) { $('guidanceOut').textContent = Number(e.target.value).toFixed(1); });
+      $('reuse').addEventListener('click', function () {
+        if (lastSeed === null) return;
+        $('seed').value = lastSeed;
+        document.querySelector('details').open = true;
+      });
+
+      poll();
+    })();
+  </script>
+</body>
+</html>

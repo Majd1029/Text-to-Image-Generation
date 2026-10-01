@@ -1,3 +1,14 @@
+---
+title: Text to Image
+emoji: 🎨
+colorFrom: purple
+colorTo: pink
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Stable Diffusion v1.5 + LCM-LoRA API on CPU
+---
+
 # 🎨 Stable Diffusion LoRA — dataset pipeline and training setup
 
 Builds an image-caption dataset by harvesting and validating web images, then
@@ -23,6 +34,7 @@ Streamlit interface.
 | Inference with base SD1.5 | Working |
 | Inference with LoRA weights | Blocked on training |
 | Streamlit app | Runs against base SD1.5 |
+| Hosted demo (Hugging Face Space + Vercel page) | Ready to deploy — see [Live demo and deployment](#live-demo-and-deployment) |
 
 ---
 
@@ -63,8 +75,15 @@ so a silent failure cannot repeat.
 ├── utils/
 │   ├── image_utils.py
 │   └── prompt_utils.py
+├── scripts/
+│   └── download_models.py               # pre-downloads weights at Docker build time
+├── web/
+│   └── index.html                       # static demo page (deployed on Vercel)
 ├── app.py                               # Streamlit interface
-└── requirements.txt
+├── server.py                            # HTTP API for the Hugging Face Space
+├── Dockerfile                           # Space image (CPU)
+├── requirements.txt                     # local use
+└── requirements-space.txt               # Space image
 ```
 
 `data/` and `models/` are gitignored. The dataset (565 MB `data.csv`,
@@ -115,7 +134,7 @@ Roughly 1-2 hours on a free Colab T4. Output is
 ```python
 from inference.pipeline import load_pipeline, generate_image
 
-pipe = load_pipeline()            # LoRA is optional; skipped if absent
+pipe, using_lora = load_pipeline()   # LoRA is optional; skipped if absent
 image = generate_image(pipe, "a lighthouse in a storm", steps=30)
 ```
 
@@ -126,24 +145,75 @@ streamlit run app.py
 Set the `LORA_PATH` environment variable to a local directory or a Hub repo id
 once weights exist.
 
----
-
-## Deployment note
-
-A live generation demo does **not** fit a free hosting tier. SD1.5's UNet alone
-is 3.44 GB; Streamlit Community Cloud allows ~2.7 GB for the whole app. The
-intended demo is a gallery of images rendered on GPU and served as static files,
-with generation done offline.
+**LCM-LoRA speed-up.** On CPU the pipeline loads
+[`latent-consistency/lcm-lora-sdv1-5`](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5)
+and switches to the LCM scheduler, so 4 steps at guidance 1.0 give a usable
+image instead of 30 steps at 7.5. Set `USE_LCM=0` to turn it off, or
+`USE_LCM=1` to use it on a GPU too.
 
 ---
+
+## Live demo and deployment
+
+The demo has two parts:
+
+```
+Vercel (web/index.html)  ──fetch──▶  Hugging Face Space (Dockerfile → server.py)
+   static page, free                    SD1.5 + LCM-LoRA on a free CPU
+```
+
+Streamlit Community Cloud can't host this: SD1.5's UNet alone is 3.44 GB and it
+allows ~2.7 GB for the whole app. A free CPU Space has 16 GB of RAM, and the
+LCM-LoRA cuts generation from minutes to roughly tens of seconds per image
+(an estimate; it hasn't been timed on Space hardware yet).
+Free Spaces sleep after about 48 hours without visitors; the page shows
+"Waking up the server…" and waits while the Space restarts (1–3 minutes).
+
+### API (`server.py`)
+
+| Endpoint | Returns |
+|---|---|
+| `GET /health` | `{"status": "loading" \| "ready" \| "error", "model", "settings", ...}` |
+| `POST /generate` | PNG. Body: `{"prompt", "steps"?, "guidance"?, "seed"?}`. Seed, steps and guidance used come back in `X-Seed`, `X-Steps`, `X-Guidance` headers. |
+
+One image is generated at a time; up to `MAX_QUEUE` (default 3) requests wait
+and the rest get HTTP 429. `ALLOWED_ORIGINS` limits which sites may call the
+API from a browser (default `*`). Run it locally with
+`uvicorn server:app --port 7860`.
+
+### 1. Hugging Face Space
+
+1. On huggingface.co, create a **new Space** → SDK **Docker** → *Blank* →
+   hardware **CPU basic (free)**. Name it `text-to-image` (owner `Majd1029`).
+2. Create an access token with **write** permission
+   (Settings → Access Tokens).
+3. In this GitHub repo, go to Settings → Secrets and variables → Actions and add:
+   - secret `HF_TOKEN` = the token
+   - variable `HF_SPACE` = `Majd1029/text-to-image`
+4. Run the **Sync to Hugging Face Space** workflow (Actions tab), or push to
+   `main`. It mirrors this repo to the Space, which builds the Docker image and
+   downloads the weights during the build. The first build takes several minutes.
+5. Check `https://majd1029-text-to-image.hf.space/health` until it says
+   `"status": "ready"`.
+
+### 2. Vercel page
+
+1. On vercel.com, **Add New → Project** and import this repository.
+2. Set **Root Directory** to `web`, Framework Preset **Other**, no build
+   command. Deploy.
+3. If the Space has a different name, change `window.API_URL` at the top of
+   `web/index.html` (`https://<owner>-<space>.hf.space`, lowercase).
+4. Optional: in the Space settings, set the variable
+   `ALLOWED_ORIGINS=https://<your-project>.vercel.app` so only the demo page
+   can call the API.
 
 ## Requirements
 
 `diffusers`, `transformers`, `torch`, `accelerate`, `peft`, `datasets`,
 `streamlit`, `pillow`.
 
-Training needs a CUDA GPU. Inference runs on CPU, slowly — minutes per image at
-512px.
+Training needs a CUDA GPU. Inference runs on CPU: minutes per image at 512px
+with the standard scheduler, much faster with the LCM-LoRA (on by default on CPU).
 
 ---
 
