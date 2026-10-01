@@ -36,14 +36,22 @@ SETTINGS = {
 }
 
 
+def gpu_available() -> bool:
+    """True with a CUDA device, and on Hugging Face ZeroGPU Spaces, where the
+    GPU is only attached while a @spaces.GPU function runs (so CUDA can look
+    unavailable at load time) and SPACES_ZERO_GPU=true is set instead."""
+    zero_gpu = os.getenv("SPACES_ZERO_GPU", "").strip().lower() in {"1", "true"}
+    return zero_gpu or torch.cuda.is_available()
+
+
 def lcm_enabled() -> bool:
-    """USE_LCM forces it on or off; unset means on for CPU, off for CUDA."""
+    """USE_LCM forces it on or off; unset means on for CPU, off for GPU."""
     value = os.getenv("USE_LCM", "").strip().lower()
     if value in {"1", "true", "yes", "on"}:
         return True
     if value in {"0", "false", "no", "off"}:
         return False
-    return not torch.cuda.is_available()
+    return not gpu_available()
 
 
 def lora_available(path: str = LORA_PATH) -> bool:
@@ -63,7 +71,7 @@ def load_pipeline(lora_path: str = LORA_PATH, use_lcm: bool | None = None):
     than claiming a fine-tune they may not have."""
     if use_lcm is None:
         use_lcm = lcm_enabled()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if gpu_available() else "cpu"
     pipe = StableDiffusionPipeline.from_pretrained(
         MODEL_ID,
         dtype=torch.float16 if device == "cuda" else torch.float32,

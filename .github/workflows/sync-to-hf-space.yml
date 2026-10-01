@@ -1,7 +1,7 @@
 # Mirrors this repository to the Hugging Face Space on every push to main.
 #
 # Setup (once):
-#   1. Create a Docker Space on huggingface.co, e.g. Majd1029/text-to-image.
+#   1. Create a Gradio Space (ZeroGPU hardware) on huggingface.co, e.g. Majd1029/text-to-image.
 #   2. Create a Hugging Face access token with write permission.
 #   3. In this GitHub repo: Settings → Secrets and variables → Actions
 #        - Secret   HF_TOKEN  = the token

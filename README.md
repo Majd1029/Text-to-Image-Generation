@@ -3,10 +3,11 @@ title: Text to Image
 emoji: 🎨
 colorFrom: purple
 colorTo: pink
-sdk: docker
-app_port: 7860
+sdk: gradio
+sdk_version: 6.29.0
+app_file: space_app.py
 pinned: false
-short_description: Stable Diffusion v1.5 + LCM-LoRA API on CPU
+short_description: Stable Diffusion v1.5 text-to-image on ZeroGPU
 ---
 
 # 🎨 Stable Diffusion LoRA — dataset pipeline and training setup
@@ -75,15 +76,11 @@ so a silent failure cannot repeat.
 ├── utils/
 │   ├── image_utils.py
 │   └── prompt_utils.py
-├── scripts/
-│   └── download_models.py               # pre-downloads weights at Docker build time
 ├── web/
 │   └── index.html                       # static demo page (deployed on Vercel)
-├── app.py                               # Streamlit interface
-├── server.py                            # HTTP API for the Hugging Face Space
-├── Dockerfile                           # Space image (CPU)
-├── requirements.txt                     # local use
-└── requirements-space.txt               # Space image
+├── app.py                               # Streamlit interface (local)
+├── space_app.py                         # Gradio app for the Hugging Face Space
+└── requirements.txt
 ```
 
 `data/` and `models/` are gitignored. The dataset (565 MB `data.csv`,
@@ -158,62 +155,57 @@ image instead of 30 steps at 7.5. Set `USE_LCM=0` to turn it off, or
 The demo has two parts:
 
 ```
-Vercel (web/index.html)  ──fetch──▶  Hugging Face Space (Dockerfile → server.py)
-   static page, free                    SD1.5 + LCM-LoRA on a free CPU
+Vercel (web/index.html)  ──@gradio/client──▶  Hugging Face Space (space_app.py)
+   static page, free                            SD1.5 on a free ZeroGPU
 ```
 
 Streamlit Community Cloud can't host this: SD1.5's UNet alone is 3.44 GB and it
-allows ~2.7 GB for the whole app. A free CPU Space has 16 GB of RAM, and the
-LCM-LoRA cuts generation from minutes to roughly tens of seconds per image
-(an estimate; it hasn't been timed on Space hardware yet).
-Free Spaces sleep after about 48 hours without visitors; the page shows
-"Waking up the server…" and waits while the Space restarts (1–3 minutes).
+allows ~2.7 GB for the whole app. A ZeroGPU Space is free and attaches a GPU
+only while an image is being generated. Visitors share a daily GPU quota; when
+it runs out the page says so. Free Spaces sleep after a period without
+visitors; the page shows "Waking up the server…" and waits while the Space
+restarts.
 
-### API (`server.py`)
+### API (`space_app.py`)
 
-| Endpoint | Returns |
-|---|---|
-| `GET /health` | `{"status": "loading" \| "ready" \| "error", "model", "settings", ...}` |
-| `POST /generate` | PNG. Body: `{"prompt", "steps"?, "guidance"?, "seed"?}`. Seed, steps and guidance used come back in `X-Seed`, `X-Steps`, `X-Guidance` headers. |
+| Endpoint | Inputs | Returns |
+|---|---|---|
+| `/generate` | `prompt`, `steps`, `guidance`, `seed` (-1 = random) | image, seed used |
+| `/settings` | — | model label, slider ranges |
 
-One image is generated at a time; up to `MAX_QUEUE` (default 3) requests wait
-and the rest get HTTP 429. `ALLOWED_ORIGINS` limits which sites may call the
-API from a browser (default `*`). Run it locally with
-`uvicorn server:app --port 7860`.
+Call it with [`@gradio/client`](https://www.npmjs.com/package/@gradio/client)
+(as `web/index.html` does) or the Python `gradio_client`. Run it locally with
+`python space_app.py`.
 
 ### 1. Hugging Face Space
 
-1. On huggingface.co, create a **new Space** → SDK **Docker** → *Blank* →
-   hardware **CPU basic (free)**. Name it `text-to-image` (owner `Majd1029`).
+1. On huggingface.co, create a **new Space** → SDK **Gradio** → *Blank* →
+   hardware **ZeroGPU**, visibility **Public**. Name it `text-to-image`.
 2. Create an access token with **write** permission
    (Settings → Access Tokens).
 3. In this GitHub repo, go to Settings → Secrets and variables → Actions and add:
    - secret `HF_TOKEN` = the token
-   - variable `HF_SPACE` = `Majd1029/text-to-image`
+   - variable `HF_SPACE` = `<hf-username>/text-to-image`
 4. Run the **Sync to Hugging Face Space** workflow (Actions tab), or push to
-   `main`. It mirrors this repo to the Space, which builds the Docker image and
-   downloads the weights during the build. The first build takes several minutes.
-5. Check `https://majd1029-text-to-image.hf.space/health` until it says
-   `"status": "ready"`.
+   `main`. It mirrors this repo to the Space, which installs the requirements
+   and starts `space_app.py`. The first start downloads the model (~4 GB).
 
 ### 2. Vercel page
 
 1. On vercel.com, **Add New → Project** and import this repository.
 2. Set **Root Directory** to `web`, Framework Preset **Other**, no build
    command. Deploy.
-3. If the Space has a different name, change `window.API_URL` at the top of
-   `web/index.html` (`https://<owner>-<space>.hf.space`, lowercase).
-4. Optional: in the Space settings, set the variable
-   `ALLOWED_ORIGINS=https://<your-project>.vercel.app` so only the demo page
-   can call the API.
+3. If the Space isn't `Majd1029/text-to-image`, change `window.SPACE_ID` at the
+   top of `web/index.html`.
 
 ## Requirements
 
 `diffusers`, `transformers`, `torch`, `accelerate`, `peft`, `datasets`,
 `streamlit`, `pillow`.
 
-Training needs a CUDA GPU. Inference runs on CPU: minutes per image at 512px
-with the standard scheduler, much faster with the LCM-LoRA (on by default on CPU).
+Training needs a CUDA GPU. Inference runs on a GPU in seconds; on CPU it takes
+minutes per image at 512px with the standard scheduler, much less with the
+LCM-LoRA (on by default on CPU).
 
 ---
 
