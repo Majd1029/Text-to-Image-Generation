@@ -33,7 +33,7 @@ Streamlit interface.
 | Download images, write `valid_captions.csv` | Working |
 | LoRA fine-tuning | **Fixed, not yet re-run** |
 | Inference with base SD1.5 | Working |
-| Inference with LoRA weights | Blocked on training |
+| Inference with LoRA weights | Ready: loads `MA29/t2i-lora` automatically once training publishes it |
 | Streamlit app | Runs against base SD1.5 |
 | Hosted demo (Hugging Face Space + Vercel page) | Ready to deploy — see [Live demo and deployment](#live-demo-and-deployment) |
 
@@ -124,6 +124,11 @@ accelerate launch --mixed_precision="fp16" \
 Roughly 1-2 hours on a free Colab T4. Output is
 `pytorch_lora_weights.safetensors`, about 3 MB at rank 4.
 
+The easy way is `train_lora_FIXED.ipynb` in Colab (*Runtime → Run all* on a T4).
+It reads the dataset from Google Drive, resumes after a disconnect, and publishes
+the weights to the Hub as `MA29/t2i-lora`. Restart the demo Space afterwards and
+it loads the fine-tune on startup.
+
 ---
 
 ## Inference
@@ -139,8 +144,9 @@ image = generate_image(pipe, "a lighthouse in a storm", steps=30)
 streamlit run app.py
 ```
 
-Set the `LORA_PATH` environment variable to a local directory or a Hub repo id
-once weights exist.
+The LoRA is loaded from `LORA_PATH`: a local directory or a Hub repo id,
+`MA29/t2i-lora` by default. If it holds no weights yet, the base model is used.
+Set `LORA_PATH=""` to force the base model.
 
 **LCM-LoRA speed-up.** On CPU the pipeline loads
 [`latent-consistency/lcm-lora-sdv1-5`](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5)

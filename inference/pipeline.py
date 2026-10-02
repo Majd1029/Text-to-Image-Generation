@@ -23,8 +23,11 @@ from diffusers import LCMScheduler, StableDiffusionPipeline
 
 MODEL_ID = os.getenv("MODEL_ID", "stable-diffusion-v1-5/stable-diffusion-v1-5")
 
-# Local directory or a Hub repo id. Empty/missing means base model only.
-LORA_PATH = os.getenv("LORA_PATH", "models/lora_sd_v1_5")
+# Local directory or a Hub repo id. Defaults to the repo the training notebook
+# publishes to; until it holds weights, the base model is used. Set LORA_PATH=""
+# to force the base model.
+LORA_PATH = os.getenv("LORA_PATH", "MA29/t2i-lora")
+LORA_WEIGHTS = "pytorch_lora_weights.safetensors"
 
 LCM_LORA_ID = os.getenv("LCM_LORA_ID", "latent-consistency/lcm-lora-sdv1-5")
 
@@ -55,15 +58,23 @@ def lcm_enabled() -> bool:
 
 
 def lora_available(path: str = LORA_PATH) -> bool:
-    """True only if the directory exists and holds real adapter weights.
-    An empty directory does not count — that is exactly the state the failed
-    training run left behind."""
+    """True only if real adapter weights exist, in a local directory or a Hub
+    repo. An empty directory or repo does not count — that is exactly the state
+    the failed training run left behind."""
     if not path:
         return False
     p = Path(path)
-    if not p.is_dir():
+    if p.is_dir():
+        return any(p.glob("*.safetensors")) or any(p.glob("*.bin"))
+    if p.exists() or path.count("/") != 1:
         return False
-    return any(p.glob("*.safetensors")) or any(p.glob("*.bin"))
+    # Looks like a Hub repo id ("owner/name").
+    try:
+        from huggingface_hub import file_exists
+
+        return file_exists(path, LORA_WEIGHTS)
+    except Exception:  # offline, repo missing or private: fall back to base model
+        return False
 
 
 def load_pipeline(lora_path: str = LORA_PATH, use_lcm: bool | None = None):
