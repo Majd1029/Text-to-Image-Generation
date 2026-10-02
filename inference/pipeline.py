@@ -29,6 +29,18 @@ MODEL_ID = os.getenv("MODEL_ID", "stable-diffusion-v1-5/stable-diffusion-v1-5")
 LORA_PATH = os.getenv("LORA_PATH", "MA29/t2i-lora")
 LORA_WEIGHTS = "pytorch_lora_weights.safetensors"
 
+# How strongly the fine-tune is applied (1.0 = full). The training images are
+# web-harvested stock photos and some carry watermarks; blending the LoRA below
+# full strength keeps its style while weakening those learned artefacts.
+LORA_SCALE = float(os.getenv("LORA_SCALE", "0.8"))
+
+# Steers generation away from watermarks and stray text learned from stock
+# photos. Only has an effect with classifier-free guidance (guidance > 1).
+NEGATIVE_PROMPT = os.getenv(
+    "NEGATIVE_PROMPT",
+    "watermark, text, logo, signature, words, letters, stock photo watermark, blurry, lowres",
+)
+
 LCM_LORA_ID = os.getenv("LCM_LORA_ID", "latent-consistency/lcm-lora-sdv1-5")
 
 # (min, max, default) for each mode. LCM needs few steps and low guidance;
@@ -91,32 +103,36 @@ def load_pipeline(lora_path: str = LORA_PATH, use_lcm: bool | None = None):
     if device == "cuda":
         pipe.enable_attention_slicing()
 
-    adapters = []
+    adapters, weights = [], []
     if use_lcm:
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.load_lora_weights(LCM_LORA_ID, adapter_name="lcm")
         adapters.append("lcm")
+        weights.append(1.0)
 
     using_lora = False
     if lora_available(lora_path):
         pipe.load_lora_weights(lora_path, adapter_name="style")
         adapters.append("style")
+        weights.append(LORA_SCALE)
         using_lora = True
 
-    if len(adapters) > 1:
-        # Both adapters stay active; loading a second one does not do this alone.
-        pipe.set_adapters(adapters, adapter_weights=[1.0] * len(adapters))
+    if adapters:
+        # Activates every loaded adapter at its weight; loading one after another
+        # does not do this on its own.
+        pipe.set_adapters(adapters, adapter_weights=weights)
 
     pipe.set_progress_bar_config(disable=True)
     return pipe, using_lora
 
 
-def generate_image(pipe, prompt, steps=30, guidance=7.5, seed=None):
+def generate_image(pipe, prompt, steps=30, guidance=7.5, seed=None, negative_prompt=NEGATIVE_PROMPT):
     generator = None
     if seed is not None and seed >= 0:
         generator = torch.Generator(pipe.device.type).manual_seed(int(seed))
     return pipe(
         prompt,
+        negative_prompt=negative_prompt or None,
         num_inference_steps=int(steps),
         guidance_scale=float(guidance),
         generator=generator,
