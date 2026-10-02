@@ -16,11 +16,10 @@ Builds an image-caption dataset by harvesting and validating web images, then
 fine-tunes Stable Diffusion v1.5 with LoRA and serves the result through a
 Streamlit interface.
 
-> **Status: the LoRA is not trained yet.** The first training run failed and
-> produced no weights. The cause is identified and fixed — see
-> [Training status](#training-status). Until that run completes, the inference
-> code falls back to base Stable Diffusion v1.5 and says so. Nothing in this
-> repository is currently a fine-tuned model.
+> **Status: trained.** A rank-4 LoRA was trained for 2,000 steps on the 2,163
+> pairs and is published as [`MA29/t2i-lora`](https://huggingface.co/MA29/t2i-lora).
+> The demo loads it automatically. The first training run had failed and produced
+> no weights; [Training status](#training-status) explains why and what fixed it.
 
 ---
 
@@ -31,11 +30,11 @@ Streamlit interface.
 | Harvest image URLs + captions from a source CSV | Working |
 | Validate URLs, drop dead links | Working — **2,163** valid pairs |
 | Download images, write `valid_captions.csv` | Working |
-| LoRA fine-tuning | **Fixed, not yet re-run** |
+| LoRA fine-tuning | Done — 2,000 steps on a Colab T4, published as `MA29/t2i-lora` |
 | Inference with base SD1.5 | Working |
-| Inference with LoRA weights | Ready: loads `MA29/t2i-lora` automatically once training publishes it |
-| Streamlit app | Runs against base SD1.5 |
-| Hosted demo (Hugging Face Space + Vercel page) | Ready to deploy — see [Live demo and deployment](#live-demo-and-deployment) |
+| Inference with LoRA weights | Working — loaded from the Hub at 80% strength |
+| Streamlit app | Runs with the fine-tune (or base SD1.5 if the Hub is unreachable) |
+| Hosted demo (Hugging Face Space + Vercel page) | Live — see [Live demo and deployment](#live-demo-and-deployment) |
 
 ---
 
@@ -147,6 +146,15 @@ streamlit run app.py
 The LoRA is loaded from `LORA_PATH`: a local directory or a Hub repo id,
 `MA29/t2i-lora` by default. If it holds no weights yet, the base model is used.
 Set `LORA_PATH=""` to force the base model.
+
+**Watermarks.** The training images are web-harvested stock photos and some carry
+watermarks, which the LoRA partly learned. Two settings counter this, both
+overridable through environment variables (e.g. Space variables):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LORA_SCALE` | `0.8` | Fine-tune strength; lower keeps less of the learned style and artefacts |
+| `NEGATIVE_PROMPT` | `watermark, text, logo, …` | Steers away from watermarks; set to `""` to disable |
 
 **LCM-LoRA speed-up.** On CPU the pipeline loads
 [`latent-consistency/lcm-lora-sdv1-5`](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5)
